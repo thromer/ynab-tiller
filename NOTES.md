@@ -18,3 +18,5 @@ Ugh -- dmlerner generated seems not to work for me at least
 https://github.com/swagger-api/swagger-codegen#prerequisites
 
 https://openapi-generator.tech/docs/installation#jarhttps://converter.swagger.io/#/Converter/convertByUrl
+
+pip install git+https://github.com/thromer/ynab-api.git

@@ -10,7 +10,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pprint import pprint
-from ynab_api.apis.tags import transactions_api
+from ynab_api.api import transactions_api
 
 # If modifying these scopes, delete the file $HOME/ynab-tiller-token.json.
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -25,6 +25,7 @@ CREDENTIALS_FILE = HOME_DIR + '/client_secret_503586827022-4det1688u753c66bgkplr
 YNAB_SECRETS_FILE = HOME_DIR + '/ynab-secrets.json'
 YNAB_BUDGET_ID = 'de4c0d69-c96c-4f1d-833b-cb0b7151b364'
 YNAB_BROKERAGE_ACCOUNT_ID = '93132634-e507-4c48-909d-981aef2cc70e'
+YNAB_CHASE_AMAZON_ACCOUNT_ID = '46be1192-177d-480b-aa29-283fdd327c8a'
 
 def get_ynab_transactions_api():
     with open(YNAB_SECRETS_FILE) as f:
@@ -47,7 +48,7 @@ def get_spreadsheets_api():
     # If there are no (valid) credentials available, let the user log in.
     if not sheets_creds or not sheets_creds.valid:
         if sheets_creds and sheets_creds.expired and sheets_creds.refresh_token:
-            sheets_creds.refresh(Requset())
+            sheets_creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 CREDENTIALS_FILE, SCOPES)
@@ -59,31 +60,41 @@ def get_spreadsheets_api():
     service = build('sheets', 'v4', credentials=sheets_creds)
     return service.spreadsheets()
 
+def make_transaction(account_id, tiller_id, date, description, amount, full_description):
+    if not tiller_id:
+        raise "Must provide tiller_id"
+    return {
+        'account_id': account_id,
+        'amount': amount * 1000, 
+        'date': datetime.date(2023, 5, 30),  # TODO
+        'import_id': tiller_id,
+        'matched_transaction_id': None,
+        'memo': None
+    }
+
 def main():
     ynab = get_ynab_transactions_api()
-    # spreadsheets = get_spreadsheets_api()
-    
-    # result = spreadsheets.values().get(spreadsheetId=SPREADSHEET_ID,
-    #                                    range=RANGE_NAME).execute()
-    # values = result.get('values', [])
-    # print('values: ', values)
-    # if not values:
-    #     print('No data found.')
-    #     return
-    
-    # print('Name, Major:')
-    # for row in values:
-    #     # Print columns A and C, which correspond to indices 0 and 2.
-    #     print('%s, %s' % (row[0], row[2]))
+    spreadsheets = get_spreadsheets_api()
+
+    # TODO type of date and amount field is wrong, why is that?
+    result = spreadsheets.values().get(spreadsheetId=SPREADSHEET_ID,
+                                       range=RANGE_NAME).execute()
+    values = result.get('values', [])
+    if not values:
+        print('No data found.')
+    else:
+        for row in values:
+            print(row)
+
+    # TODO may need some conversion on date field
+
+    return
 
     api_response = ynab.get_transactions_by_account(
-        path_params={
-            'budget_id': YNAB_BUDGET_ID, 
-            'account_id': YNAB_BROKERAGE_ACCOUNT_ID
-        },
-        query_params={
-            'since_date':'2020-01-01'
-        })
+        YNAB_BUDGET_ID, 
+        YNAB_BROKERAGE_ACCOUNT_ID,
+        # YNAB_CHASE_AMAZON_ACCOUNT_ID,
+        since_date='2020-01-01')
     pprint(api_response)
         
 
