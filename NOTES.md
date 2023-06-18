@@ -6,17 +6,25 @@ Assumptions
 - We'll run this no less than every 30 days.
 
 Cookie crumbs
+
+sudo apt-get install python3-venv
 venv venv
 . venv/bin/activate
 
-https://github.com/dmlerner/ynab-python.
+Later: https://github.com/dmlerner/ynab-python
 
 https://developers.google.com/sheets/api/quickstart/python
 
-Ugh -- dmlerner generated seems not to work for me at least
+Not: https://github.com/swagger-api/swagger-codegen#prerequisites
 
-https://github.com/swagger-api/swagger-codegen#prerequisites
+Not: https://openapi-generator.tech/docs/installation#jarhttps://converter.swagger.io/#/Converter/convertByUrl
 
-https://openapi-generator.tech/docs/installation#jarhttps://converter.swagger.io/#/Converter/convertByUrl
+Cloud project
 
-pip install git+https://github.com/thromer/ynab-api.git
+https://console.cloud.google.com/welcome?pli=1&project=ynab-sheets-001
+
+pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+pip install git+https://github.com/thromer/ynab-api.git@thromer-nullable
+
+pip install datetime
+

@@ -1,7 +1,9 @@
 # TODO error handling
 
+import datetime
 import json
 import os.path
+import sys
 import ynab_api
 
 from google.auth.transport.requests import Request
@@ -11,13 +13,15 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pprint import pprint
 from ynab_api.api import transactions_api
+from ynab_api.model.post_transactions_wrapper import PostTransactionsWrapper
+from ynab_api.model.save_transaction import SaveTransaction
 
 # If modifying these scopes, delete the file $HOME/ynab-tiller-token.json.
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
 # The ID and range of a sample spreadsheet.
 SPREADSHEET_ID = '1UQQgW3kBfxNBB50q1pg4Hn2c6DvwoKVUF_9GelZ1k1Q'
-RANGE_NAME = 'Brokerage!A:G'
+RANGE_NAME = 'Brokerage_recent!A:G'
 
 HOME_DIR = os.environ['HOME']
 TOKEN_FILE = HOME_DIR + '/ynab-tiller-token.json'
@@ -60,43 +64,191 @@ def get_spreadsheets_api():
     service = build('sheets', 'v4', credentials=sheets_creds)
     return service.spreadsheets()
 
-def make_transaction(account_id, tiller_id, date, description, amount, full_description):
-    if not tiller_id:
+EXCEL_EPOCH = datetime.date(1900, 1, 1).toordinal() - 2
+
+def date_from_excel_date(sheet_date):
+    return datetime.date.fromordinal(EXCEL_EPOCH + sheet_date)
+
+def date_to_excel_date(python_date):
+    return datetime.date.fromordinal(python_date.toordinal() - EXCEL_EPOCH).toordinal()
+
+def make_transaction(ynab_account_id, row):
+    if not ynab_account_id:
         raise "Must provide tiller_id"
     return {
-        'account_id': account_id,
-        'amount': amount * 1000, 
-        'date': datetime.date(2023, 5, 30),  # TODO
-        'import_id': tiller_id,
-        'matched_transaction_id': None,
-        'memo': None
+        'account_id': ynab_account_id,
+        'amount': round(row['Amount'] * 1000), 
+        'date': date_from_excel_date(row['Date']),
+        'import_id': row['tiller_transaction_id'],
+        'payee_name': row['Description'][:50], # required on read but not write ?!
+        'memo': row['Full Description']
     }
 
-def main():
-    ynab = get_ynab_transactions_api()
-    spreadsheets = get_spreadsheets_api()
+class Main:
+    def __init__(self):
+        self._ynab = get_ynab_transactions_api()
+        self._spreadsheets = get_spreadsheets_api()
 
-    # TODO type of date and amount field is wrong, why is that?
-    result = spreadsheets.values().get(spreadsheetId=SPREADSHEET_ID,
-                                       range=RANGE_NAME).execute()
-    values = result.get('values', [])
-    if not values:
-        print('No data found.')
-    else:
-        for row in values:
-            print(row)
+    def get_ynab_transactions(self):
+        return self._ynab.get_transactions_by_account(
+            YNAB_BUDGET_ID, 
+            YNAB_BROKERAGE_ACCOUNT_ID,
+            # YNAB_CHASE_AMAZON_ACCOUNT_ID,
+            since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
+        )['data']['transactions']
 
-    # TODO may need some conversion on date field
+    def get_all_ynab_transactions(self):
+        return self._ynab.get_transactions(
+            YNAB_BUDGET_ID, 
+            since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
+        )['data']['transactions']
 
-    return
+    def _update_ynab_internal(self):
+        brokerage_values = self._spreadsheets.values().get(
+            spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME,
+            valueRenderOption='UNFORMATTED_VALUE').execute().get('values', [])
 
-    api_response = ynab.get_transactions_by_account(
-        YNAB_BUDGET_ID, 
-        YNAB_BROKERAGE_ACCOUNT_ID,
-        # YNAB_CHASE_AMAZON_ACCOUNT_ID,
-        since_date='2020-01-01')
-    pprint(api_response)
+        if not brokerage_values:
+            raise('Empty brokerage results.')
+
+        brokerage_headers = brokerage_values[0]
+        brokerage_entry_list = [
+            { brokerage_headers[i] : row[i] for i in range(len(row)) }
+            for row in brokerage_values[1:] 
+        ]
+        brokerage_entry_tiller_ids = set(
+            [entry['tiller_transaction_id'] for entry in brokerage_entry_list])
+
+        # print(brokerage_entry_tiller_ids)
+
+        ynab_tiller_values = self._spreadsheets.values().get(
+            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller_recent!A:C',
+            valueRenderOption='UNFORMATTED_VALUE').execute().get('values', [])
+
+        if not ynab_tiller_values:
+            raise('Empty ynab_tiller results.')
+
+        ynab_tiller_headers = ynab_tiller_values[0]
+        ynab_tiller_entry_list = [
+            { ynab_tiller_headers[i] : row[i] for i in range(len(row)) }
+            for row in ynab_tiller_values[1:] 
+        ]
+        ynab_tiller_entry_tiller_ids = set(
+            [entry['tiller_transaction_id'] for entry in ynab_tiller_entry_list])
+
+        # print(ynab_tiller_entry_tiller_ids)
+
+        new_tiller_ids = brokerage_entry_tiller_ids.difference(ynab_tiller_entry_tiller_ids)
+        print('new_tiller_ids', new_tiller_ids)
+
+        ynab_transactions = []
+        for entry in brokerage_entry_list:
+            if entry['tiller_transaction_id'] not in new_tiller_ids:
+                continue
+            ynab_transaction = make_transaction(YNAB_BROKERAGE_ACCOUNT_ID, entry)
+            print(ynab_transaction)
+            ynab_transactions.append(SaveTransaction(**ynab_transaction))
+
+        # Yuck! Assumes nothing interesting will happen after this point
+        if not ynab_transactions:
+            return
         
+        api_response = self._ynab.create_transaction(
+            YNAB_BUDGET_ID,
+            PostTransactionsWrapper(transactions=ynab_transactions)
+        )
+        pprint(api_response)
+        ynab_data = api_response['data']
+        return ynab_data
+
+    def _apply_tiller_ynab_sheet_updates(self, new_sheets_row_maps):
+        print('THROMER _apply_tiller_ynab_sheet_updates')
+        pprint(new_sheets_row_maps)
+        result = self._spreadsheets.values().get(
+            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller!1:1',
+            valueRenderOption='UNFORMATTED_VALUE').execute()
+
+        values = result.get('values', [])
+        if not values:
+            raise('Empty results.')
+        values = result.get('values', [])
+        if not values:
+            raise('Empty results.')
+        headers = values[0]
+        header_index = {i : headers[i] for i in range(len(headers))}
+        new_sheets_row_lists = [ [row[header_index[i]] for i in range(len(headers))] for row in new_sheets_row_maps ]
+        append_response = self._spreadsheets.values().append(
+            spreadsheetId=SPREADSHEET_ID, 
+            range='ynab_tiller!A:C',
+            body={
+                'range': 'ynab_tiller!A:C',
+                'values': new_sheets_row_lists
+            },
+            valueInputOption='RAW',
+            responseValueRenderOption='UNFORMATTED_VALUE'
+        ).execute()
+        
+    def _update_tiller_ynab_sheet(self, transactions):
+        # Append tiller_id + ynab_id + date to sheets
+        self._apply_tiller_ynab_sheet_updates([
+            self._tiller_ynab_sheet_row_map(transaction)
+            for transaction in transactions ])
+
+    def _tiller_ynab_sheet_row_map(self, ynab_transaction):
+        return {
+            'tiller_transaction_id': ynab_transaction['import_id'],
+            'ynab_transaction_id': ynab_transaction['id'],
+            'date': date_to_excel_date(ynab_transaction['date'])
+        } 
+
+    def _recover_from_duplicate_import_ids(self, import_ids):
+        print('THROMER _recover_from_duplicate_import_ids')
+        import_ids = set(import_ids)
+        transactions = self.get_ynab_transactions()
+        self._apply_tiller_ynab_sheet_updates([ 
+            self._tiller_ynab_sheet_row_map(transaction)
+            for transaction in transactions
+            if (transaction['import_id'] in import_ids and
+                not transaction['deleted']) ])
+
+    def update_ynab(self):
+        print('THROMER update_ynab')
+        ynab_data = self._update_ynab_internal()
+    
+        if ynab_data and ynab_data['duplicate_import_ids']:
+            print('THROMER uh oh duplicates 1')
+            # This could happen if we update YNAB but fail to note it in Sheets.
+            self._recover_from_duplicate_import_ids(ynab_data['duplicate_import_ids'])
+            ynab_data = self._update_ynab_internal()
+            if ynab_data and ynab_data['duplicate_import_ids']:
+                print('THROMER uh oh duplicates 2')
+                for id in ynab_data['duplicate_import_ids']:
+                    print(id, file=sys.stderr)
+                raise Exception('Uh oh, unexpected duplicate import_ids even after repair ' + str(ynab_data['duplicate_import_ids']))
+
+        if ynab_data:
+            self._update_tiller_ynab_sheet(ynab_data['transactions'])
+
+ 
+def main():
+    m = Main()
+
+    if False:
+        pprint(m.get_ynab_transactions())
+        return
+
+    if False:
+        pprint(m.get_all_ynab_transactions())
+        return
+
+    m.update_ynab()
+    
+    if False:
+        pprint(m.get_ynab_transactions())
 
 if __name__ == '__main__':
     main()
+
+# Local Variables:
+# compile-command: "python ynab-tiller.py"
+# End:    
