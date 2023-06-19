@@ -6,12 +6,15 @@ import os.path
 import sys
 import ynab_api
 
+from collections import defaultdict
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pprint import pprint
+from ynab_api.api import accounts_api
+from ynab_api.api import categories_api
 from ynab_api.api import transactions_api
 from ynab_api.model.post_transactions_wrapper import PostTransactionsWrapper
 from ynab_api.model.save_transaction import SaveTransaction
@@ -21,26 +24,13 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
 # The ID and range of a sample spreadsheet.
 SPREADSHEET_ID = '1UQQgW3kBfxNBB50q1pg4Hn2c6DvwoKVUF_9GelZ1k1Q'
-RANGE_NAME = 'Brokerage_recent!A:G'
+RANGE_NAME = 'export_me!A:H'
 
 HOME_DIR = os.environ['HOME']
 TOKEN_FILE = HOME_DIR + '/ynab-tiller-token.json'
 CREDENTIALS_FILE = HOME_DIR + '/client_secret_503586827022-4det1688u753c66bgkplrn1eseno78bq.apps.googleusercontent.com.json'
 YNAB_SECRETS_FILE = HOME_DIR + '/ynab-secrets.json'
 YNAB_BUDGET_ID = 'de4c0d69-c96c-4f1d-833b-cb0b7151b364'
-YNAB_BROKERAGE_ACCOUNT_ID = '93132634-e507-4c48-909d-981aef2cc70e'
-YNAB_CHASE_AMAZON_ACCOUNT_ID = '46be1192-177d-480b-aa29-283fdd327c8a'
-
-def get_ynab_transactions_api():
-    with open(YNAB_SECRETS_FILE) as f:
-        secrets = json.load(f)
-        api_key = secrets['api_key']
-    
-    configuration = ynab_api.Configuration(
-        host="https://api.youneedabudget.com/v1")
-    configuration.api_key['bearer'] = api_key
-    configuration.api_key_prefix['bearer'] = 'Bearer'
-    return transactions_api.TransactionsApi(ynab_api.ApiClient(configuration))
 
 def get_spreadsheets_api():
     sheets_creds = None
@@ -72,25 +62,68 @@ def date_from_excel_date(sheet_date):
 def date_to_excel_date(python_date):
     return datetime.date.fromordinal(python_date.toordinal() - EXCEL_EPOCH).toordinal()
 
-def make_transaction(ynab_account_id, row):
-    if not ynab_account_id:
-        raise "Must provide tiller_id"
-    return {
-        'account_id': ynab_account_id,
-        'amount': round(row['Amount'] * 1000), 
-        'date': date_from_excel_date(row['Date']),
-        'import_id': row['tiller_transaction_id'],
-        'payee_name': row['Description'][:50], # required on read but not write ?!
-        'memo': row['Full Description'][:200]
-    }
-
 class Main:
     def __init__(self):
-        self._ynab = get_ynab_transactions_api()
+        ynab_client = self._make_ynab_client()
+        self._ynab_a = accounts_api.AccountsApi(ynab_client)
+        self._ynab_t = transactions_api.TransactionsApi(ynab_client)
         self._spreadsheets = get_spreadsheets_api()
+        self._ynab_account_name_id_map = self._get_ynab_account_name_id_map()
+        self._categories = self.Categories(ynab_client)
+
+    class Categories:
+        def __init__(self, ynab_client):
+            ynab_c = categories_api.CategoriesApi(ynab_client)
+            self._map = defaultdict(lambda: None)
+            self._names = {''}  # Because we don't mind empty string as a category name
+            resp = ynab_c.get_categories(YNAB_BUDGET_ID)
+            for cg in resp['data']['category_groups']:
+                # pprint(cg)
+                for c in cg['categories']:
+                    self._map[c['name']] = c['id']
+                    self._names.add(c['name'])
+
+        def get_id(self, name):
+            return self._map[name]
+
+        def get_names(self):
+            return self._names
+
+    def _make_ynab_client(self):
+      with open(YNAB_SECRETS_FILE) as f:
+          secrets = json.load(f)
+          api_key = secrets['api_key']
+      config = ynab_api.Configuration(
+          host="https://api.youneedabudget.com/v1")
+      config.api_key['bearer'] = api_key
+      config.api_key_prefix['bearer'] = 'Bearer'
+      return ynab_api.ApiClient(config)
+
+    def _make_transaction(self, ynab_account_id, row):
+        if not ynab_account_id:
+            raise "Must provide tiller_id"
+        # pprint(row)
+        result = {
+            'account_id': ynab_account_id,
+            'amount': round(row['Amount'] * 1000),
+            'date': date_from_excel_date(row['Date']),
+            'import_id': row['tiller_transaction_id'],
+            'payee_name': row['Description'][:50], # required on read but not write ?!
+            'memo': row['Full Description'][:200]
+        }
+        c = row['Category']
+        if c:
+            result['category_name'] = c
+            result['category_id'] = self._categories.get_id(c)
+        return result
+
+    def _get_ynab_account_name_id_map(self):
+        return { a['name'] : a['id'] 
+                 for a in self._ynab_a.get_accounts(YNAB_BUDGET_ID)['data']['accounts'] }
 
     def get_ynab_transactions(self):
-        return self._ynab.get_transactions_by_account(
+        raise Exception("oops")
+        return self._ynab_t.get_transactions_by_account(
             YNAB_BUDGET_ID, 
             YNAB_BROKERAGE_ACCOUNT_ID,
             # YNAB_CHASE_AMAZON_ACCOUNT_ID,
@@ -98,31 +131,32 @@ class Main:
         )['data']['transactions']
 
     def get_all_ynab_transactions(self):
-        return self._ynab.get_transactions(
+        raise Exception("oops")
+        return self._ynab_t.get_transactions(
             YNAB_BUDGET_ID, 
             since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
         )['data']['transactions']
 
     def _update_ynab_internal(self):
-        brokerage_values = self._spreadsheets.values().get(
+        tiller_values = self._spreadsheets.values().get(
             spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME,
             valueRenderOption='UNFORMATTED_VALUE').execute().get('values', [])
 
-        if not brokerage_values:
-            raise('Empty brokerage results.')
+        if not tiller_values:
+            raise('Empty tiller results.')
 
-        brokerage_headers = brokerage_values[0]
-        brokerage_entry_list = [
-            defaultdict(str, { brokerage_headers[i] : row[i] for i in range(len(row)) })
-            for row in brokerage_values[1:] 
+        tiller_headers = tiller_values[0]
+        tiller_entry_list = [
+            defaultdict(str, { tiller_headers[i] : row[i] for i in range(len(row)) })
+            for row in tiller_values[1:] 
         ]
-        brokerage_entry_tiller_ids = set(
-            [entry['tiller_transaction_id'] for entry in brokerage_entry_list])
+        tiller_entry_tiller_ids = set(
+            [entry['tiller_transaction_id'] for entry in tiller_entry_list])
 
-        # print(brokerage_entry_tiller_ids)
+        # print(tiller_entry_tiller_ids)
 
         ynab_tiller_values = self._spreadsheets.values().get(
-            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller_recent!A:C',
+            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller_import!A:C',
             valueRenderOption='UNFORMATTED_VALUE').execute().get('values', [])
 
         if not ynab_tiller_values:
@@ -138,34 +172,45 @@ class Main:
 
         # print(ynab_tiller_entry_tiller_ids)
 
-        new_tiller_ids = brokerage_entry_tiller_ids.difference(ynab_tiller_entry_tiller_ids)
+        new_tiller_ids = tiller_entry_tiller_ids.difference(ynab_tiller_entry_tiller_ids)
         print('new_tiller_ids', new_tiller_ids)
+        long_tiller_ids = [id for id in new_tiller_ids if len(id) > 36]
+        if long_tiller_ids:
+            raise Exception('long_tiller_ids ' + str(long_tiller_ids))
+            
 
+        # pprint(tiller_entry_list[0])
+        skipped_categories = set()
         ynab_transactions = []
-        for entry in brokerage_entry_list:
+        for entry in tiller_entry_list:
             if entry['tiller_transaction_id'] not in new_tiller_ids:
                 continue
-            ynab_transaction = make_transaction(YNAB_BROKERAGE_ACCOUNT_ID, entry)
-            print(ynab_transaction)
-            ynab_transactions.append(SaveTransaction(**ynab_transaction))
+            if entry['category_name'] not in self._categories.get_names():
+                skipped_categories.add(entry['category_name'])
+                continue
+            ynab_transactions.append(SaveTransaction(
+                **self._make_transaction(self._ynab_account_name_id_map[entry['Account']], entry)))
+            
+        for c in skipped_categories:
+            print(c, file=sys.stderr)
+        if skipped_categories:
+            raise Exception('CATEGORIES MISSING FROM YNAB!!!')
 
-        # Yuck! Assumes nothing interesting will happen after this point
         if not ynab_transactions:
             return
         
-        api_response = self._ynab.create_transaction(
+        api_response = self._ynab_t.create_transaction(
             YNAB_BUDGET_ID,
             PostTransactionsWrapper(transactions=ynab_transactions)
         )
-        pprint(api_response)
-        ynab_data = api_response['data']
-        return ynab_data
+        # pprint(api_response)
+        return api_response['data']
 
     def _apply_tiller_ynab_sheet_updates(self, new_sheets_row_maps):
-        print('THROMER _apply_tiller_ynab_sheet_updates')
-        pprint(new_sheets_row_maps)
+        # print('THROMER _apply_tiller_ynab_sheet_updates')
+        # pprint(new_sheets_row_maps)
         result = self._spreadsheets.values().get(
-            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller!1:1',
+            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller_import!1:1',
             valueRenderOption='UNFORMATTED_VALUE').execute()
 
         values = result.get('values', [])
@@ -179,9 +224,9 @@ class Main:
         new_sheets_row_lists = [ [row[header_index[i]] for i in range(len(headers))] for row in new_sheets_row_maps ]
         append_response = self._spreadsheets.values().append(
             spreadsheetId=SPREADSHEET_ID, 
-            range='ynab_tiller!A:C',
+            range='ynab_tiller_import!A:C',
             body={
-                'range': 'ynab_tiller!A:C',
+                'range': 'ynab_tiller_import!A:C',
                 'values': new_sheets_row_lists
             },
             valueInputOption='RAW',
@@ -202,7 +247,7 @@ class Main:
         } 
 
     def _recover_from_duplicate_import_ids(self, import_ids):
-        print('THROMER _recover_from_duplicate_import_ids')
+        # print('THROMER _recover_from_duplicate_import_ids')
         import_ids = set(import_ids)
         transactions = self.get_ynab_transactions()
         self._apply_tiller_ynab_sheet_updates([ 
@@ -212,16 +257,16 @@ class Main:
                 not transaction['deleted']) ])
 
     def update_ynab(self):
-        print('THROMER update_ynab')
+        # print('THROMER update_ynab')
         ynab_data = self._update_ynab_internal()
     
         if ynab_data and ynab_data['duplicate_import_ids']:
-            print('THROMER uh oh duplicates 1')
+            # print('THROMER uh oh duplicates 1')
             # This could happen if we update YNAB but fail to note it in Sheets.
             self._recover_from_duplicate_import_ids(ynab_data['duplicate_import_ids'])
             ynab_data = self._update_ynab_internal()
             if ynab_data and ynab_data['duplicate_import_ids']:
-                print('THROMER uh oh duplicates 2')
+                # print('THROMER uh oh duplicates 2')
                 for id in ynab_data['duplicate_import_ids']:
                     print(id, file=sys.stderr)
                 raise Exception('Uh oh, unexpected duplicate import_ids even after repair ' + str(ynab_data['duplicate_import_ids']))
@@ -250,5 +295,5 @@ if __name__ == '__main__':
     main()
 
 # Local Variables:
-# compile-command: "python ynab-tiller.py"
+# compile-command: "python ynab-import.py"
 # End:    
