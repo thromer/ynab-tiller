@@ -1,7 +1,9 @@
 # TODO error handling
 
+import csv
 import datetime
 import json
+import operator
 import os.path
 import sys
 import ynab_api
@@ -12,6 +14,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from pprint import pformat
 from pprint import pprint
 from ynab_api.api import accounts_api
 from ynab_api.api import categories_api
@@ -70,6 +73,7 @@ class Main:
         self._spreadsheets = get_spreadsheets_api()
         self._ynab_account_name_id_map = self._get_ynab_account_name_id_map()
         self._categories = self.Categories(ynab_client)
+        self._the_account_name = None
 
     class Categories:
         def __init__(self, ynab_client):
@@ -103,6 +107,9 @@ class Main:
         if not ynab_account_id:
             raise "Must provide tiller_id"
         # pprint(row)
+        if not row['Description']:
+            pprint(row, file=sys.stderr)
+            raise('Empty description')
         result = {
             'account_id': ynab_account_id,
             'amount': round(row['Amount'] * 1000),
@@ -121,20 +128,16 @@ class Main:
         return { a['name'] : a['id'] 
                  for a in self._ynab_a.get_accounts(YNAB_BUDGET_ID)['data']['accounts'] }
 
-    def get_ynab_transactions(self):
-        raise Exception("oops")
+    def get_ynab_transactions(self, account_id):
         return self._ynab_t.get_transactions_by_account(
             YNAB_BUDGET_ID, 
-            YNAB_BROKERAGE_ACCOUNT_ID,
-            # YNAB_CHASE_AMAZON_ACCOUNT_ID,
-            since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
+            account_id
         )['data']['transactions']
 
-    def get_all_ynab_transactions(self):
-        raise Exception("oops")
+    def get_all_ynab_transactions(self, **kwargs):
         return self._ynab_t.get_transactions(
-            YNAB_BUDGET_ID, 
-            since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
+            YNAB_BUDGET_ID,
+            **kwargs
         )['data']['transactions']
 
     def _update_ynab_internal(self):
@@ -183,6 +186,12 @@ class Main:
         skipped_categories = set()
         ynab_transactions = []
         for entry in tiller_entry_list:
+            if not self._the_account_name:
+                self._the_account_name = entry['Account']
+            elif entry['Account'] != self._the_account_name:
+                raise(' '.join(('Please only use one account name!', 
+                                self._the_account_name, entry['Account'])))
+
             if entry['tiller_transaction_id'] not in new_tiller_ids:
                 continue
             if entry['category_name'] not in self._categories.get_names():
@@ -246,10 +255,10 @@ class Main:
             'date': date_to_excel_date(ynab_transaction['date'])
         } 
 
-    def _recover_from_duplicate_import_ids(self, import_ids):
+    def _recover_from_duplicate_import_ids(self, account_id, import_ids):
         # print('THROMER _recover_from_duplicate_import_ids')
         import_ids = set(import_ids)
-        transactions = self.get_ynab_transactions()
+        transactions = self.get_ynab_transactions(account_id)
         self._apply_tiller_ynab_sheet_updates([ 
             self._tiller_ynab_sheet_row_map(transaction)
             for transaction in transactions
@@ -263,7 +272,9 @@ class Main:
         if ynab_data and ynab_data['duplicate_import_ids']:
             # print('THROMER uh oh duplicates 1')
             # This could happen if we update YNAB but fail to note it in Sheets.
-            self._recover_from_duplicate_import_ids(ynab_data['duplicate_import_ids'])
+            self._recover_from_duplicate_import_ids(
+                self._ynab_account_name_id_map[self._the_account_name],
+                ynab_data['duplicate_import_ids'])
             ynab_data = self._update_ynab_internal()
             if ynab_data and ynab_data['duplicate_import_ids']:
                 # print('THROMER uh oh duplicates 2')
@@ -274,22 +285,52 @@ class Main:
         if ynab_data:
             self._update_tiller_ynab_sheet(ynab_data['transactions'])
 
- 
+
+def none_blank(s):
+    return "" if s == None else s
+
 def main():
     m = Main()
 
-    if False:
-        pprint(m.get_ynab_transactions())
-        return
+    if True:
+        all = m.get_all_ynab_transactions(
+            # Or not:
+            # since_date=(datetime.date.today() - 
+            #            datetime.timedelta(5)).strftime('%Y-%m-%d')
+        )
+        # print(pformat(all), file=sys.stderr)
+        # print(len(all), file=sys.stderr)
 
-    if False:
-        pprint(m.get_all_ynab_transactions())
+        result = [
+            {
+                'tiller_transaction_id': none_blank(t['import_id']),
+                'ynab_transaction_id': str(t['id']),
+	        'date': str(date_to_excel_date(t['date'])),
+                'Amount': f"{(round(t['amount']/1000.0, 2)):.2f}",
+                'Account': none_blank(t['account_name']),
+                'Category': none_blank(t['category_name']),
+                'Description': none_blank(t['payee_name'])
+            } for t in all]
+
+        dw = csv.DictWriter(sys.stdout, [
+            'tiller_transaction_id', 
+            'ynab_transaction_id',
+	    'date',
+	    'Amount',
+            'Account',
+            'Category',
+            'Description'
+        ], lineterminator='\r\n', extrasaction='ignore')
+
+        dw.writeheader()
+        for row in sorted(result, key=operator.itemgetter('tiller_transaction_id')):
+            dw.writerow(row)
         return
 
     m.update_ynab()
     
     if False:
-        pprint(m.get_ynab_transactions())
+        pprint(m.get_all_ynab_transactions())
 
 if __name__ == '__main__':
     main()

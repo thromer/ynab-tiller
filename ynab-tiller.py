@@ -1,7 +1,9 @@
 # TODO error handling
 
+import csv
 import datetime
 import json
+import operator
 import os.path
 import sys
 import ynab_api
@@ -94,7 +96,7 @@ class Main:
             YNAB_BUDGET_ID, 
             YNAB_BROKERAGE_ACCOUNT_ID,
             # YNAB_CHASE_AMAZON_ACCOUNT_ID,
-            since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
+            # since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
         )['data']['transactions']
 
     def get_all_ynab_transactions(self):
@@ -230,11 +232,37 @@ class Main:
             self._update_tiller_ynab_sheet(ynab_data['transactions'])
 
  
+def none_blank(s):
+    return "" if s == None else s
+
 def main():
     m = Main()
 
     if False:
-        pprint(m.get_ynab_transactions())
+        result = [
+            {
+                'tiller_transaction_id': none_blank(t['import_id']),
+                'ynab_transaction_id': str(t['id']),
+	        'date': str(date_to_excel_date(t['date'])),
+                'Amount': f"{(round(t['amount']/1000.0, 2)):.2f}",
+                'Account': none_blank(t['account_name']),
+                'Category': none_blank(t['category_name']),
+                'Description': none_blank(t['payee_name'])
+            } for t in m.get_ynab_transactions()]
+
+        dw = csv.DictWriter(sys.stdout, [
+            'tiller_transaction_id', 
+            'ynab_transaction_id',
+	    'date',
+	    'Amount',
+            'Account',
+            'Category',
+            'Description'
+        ], extrasaction='ignore')
+
+        dw.writeheader()
+        for row in sorted(result, key=operator.itemgetter('tiller_transaction_id')):
+            dw.writerow(row)
         return
 
     if False:
