@@ -34,6 +34,7 @@ TOKEN_FILE = HOME_DIR + '/ynab-tiller-token.json'
 CREDENTIALS_FILE = HOME_DIR + '/client_secret_503586827022-4det1688u753c66bgkplrn1eseno78bq.apps.googleusercontent.com.json'
 YNAB_SECRETS_FILE = HOME_DIR + '/ynab-secrets.json'
 YNAB_BUDGET_ID = 'de4c0d69-c96c-4f1d-833b-cb0b7151b364'
+YNAB_AMAZON_SPLIT_ACCOUNT_ID = 'e3479ea6-0acb-46d1-b084-7c7e4d982733'
 
 def get_spreadsheets_api():
     sheets_creds = None
@@ -293,7 +294,8 @@ def main():
     m = Main()
 
     if True:
-        all = m.get_all_ynab_transactions(
+        all = m.get_ynab_transactions(
+            YNAB_AMAZON_SPLIT_ACCOUNT_ID,
             # Or not:
             # since_date=(datetime.date.today() - 
             #            datetime.timedelta(5)).strftime('%Y-%m-%d')
@@ -327,7 +329,11 @@ def main():
             dw.writerow(row)
         return
 
-    m.update_ynab()
+    if False:
+        print('Buyer beware, not very robust to duplicates AFAICT', file=sys.stderr)
+        sys.exit(1)
+    else:
+        m.update_ynab()
     
     if False:
         pprint(m.get_all_ynab_transactions())
