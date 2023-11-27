@@ -8,11 +8,13 @@ import os.path
 import sys
 import ynab_api
 
+from collections import defaultdict
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from pprint import pformat
 from pprint import pprint
 from ynab_api.api import transactions_api
 from ynab_api.model.post_transactions_wrapper import PostTransactionsWrapper
@@ -96,7 +98,7 @@ class Main:
             YNAB_BUDGET_ID, 
             YNAB_BROKERAGE_ACCOUNT_ID,
             # YNAB_CHASE_AMAZON_ACCOUNT_ID,
-            # since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
+            since_date=(datetime.date.today() - datetime.timedelta(90)).strftime('%Y-%m-%d')
         )['data']['transactions']
 
     def get_all_ynab_transactions(self):
@@ -207,6 +209,11 @@ class Main:
         print('THROMER _recover_from_duplicate_import_ids')
         import_ids = set(import_ids)
         transactions = self.get_ynab_transactions()
+        candidates = [self._tiller_ynab_sheet_row_map(t) for t in transactions if t['import_id'] in import_ids]
+        print('candidates', pformat(candidates))
+        deleted_candidates = [self._tiller_ynab_sheet_row_map(t) for t in transactions if (t['import_id'] in import_ids and t['deleted'])]
+        print('skipping deleted', pformat(deleted_candidates))
+
         self._apply_tiller_ynab_sheet_updates([ 
             self._tiller_ynab_sheet_row_map(transaction)
             for transaction in transactions
@@ -269,7 +276,16 @@ def main():
         pprint(m.get_all_ynab_transactions())
         return
 
-    m.update_ynab()
+    if False:
+        print('Buyer beware, not very robust to duplicates AFAICT', file=sys.stderr)
+        # Seems like if we import once, approve everything that matched, and
+        # redo import it is ok, but that's no fun at all.
+        #
+        # Oh I hope it is I because I had those garbage columns breaking stuff?
+        sys.exit(1)
+
+    if True:
+        m.update_ynab()
     
     if False:
         pprint(m.get_ynab_transactions())
