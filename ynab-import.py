@@ -26,7 +26,8 @@ from ynab_api.model.save_transaction import SaveTransaction
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
 # The ID and range of a sample spreadsheet.
-SPREADSHEET_ID = '1UQQgW3kBfxNBB50q1pg4Hn2c6DvwoKVUF_9GelZ1k1Q'
+# SPREADSHEET_ID = '1UQQgW3kBfxNBB50q1pg4Hn2c6DvwoKVUF_9GelZ1k1Q'
+TMP_SPREADSHEET_ID = '1oaROwwYjENAkJgDJiSJcLHPSyEP6jswNswzHQqV0va8'
 RANGE_NAME = 'export_me!A:H'
 
 HOME_DIR = os.environ['HOME']
@@ -143,7 +144,7 @@ class Main:
 
     def _update_ynab_internal(self):
         tiller_values = self._spreadsheets.values().get(
-            spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME,
+            spreadsheetId=TMP_SPREADSHEET_ID, range=RANGE_NAME,
             valueRenderOption='UNFORMATTED_VALUE').execute().get('values', [])
 
         if not tiller_values:
@@ -160,7 +161,7 @@ class Main:
         # print(tiller_entry_tiller_ids)
 
         ynab_tiller_values = self._spreadsheets.values().get(
-            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller_import!A:C',
+            spreadsheetId=TMP_SPREADSHEET_ID, range='ynab_tiller_import!A:C',
             valueRenderOption='UNFORMATTED_VALUE').execute().get('values', [])
 
         if not ynab_tiller_values:
@@ -220,7 +221,7 @@ class Main:
         # print('THROMER _apply_tiller_ynab_sheet_updates')
         # pprint(new_sheets_row_maps)
         result = self._spreadsheets.values().get(
-            spreadsheetId=SPREADSHEET_ID, range='ynab_tiller_import!1:1',
+            spreadsheetId=TMP_SPREADSHEET_ID, range='ynab_tiller_import!1:1',
             valueRenderOption='UNFORMATTED_VALUE').execute()
 
         values = result.get('values', [])
@@ -233,7 +234,7 @@ class Main:
         header_index = {i : headers[i] for i in range(len(headers))}
         new_sheets_row_lists = [ [row[header_index[i]] for i in range(len(headers))] for row in new_sheets_row_maps ]
         append_response = self._spreadsheets.values().append(
-            spreadsheetId=SPREADSHEET_ID, 
+            spreadsheetId=TMP_SPREADSHEET_ID, 
             range='ynab_tiller_import!A:C',
             body={
                 'range': 'ynab_tiller_import!A:C',
@@ -291,9 +292,11 @@ def none_blank(s):
     return "" if s == None else s
 
 def main():
+    print("probably don't want to run this any more!!!")
+    sys.exit(1)
     m = Main()
 
-    if True:
+    if False:
         all = m.get_ynab_transactions(
             YNAB_AMAZON_SPLIT_ACCOUNT_ID,
             # Or not:
@@ -330,9 +333,6 @@ def main():
         return
 
     if False:
-        print('Buyer beware, not very robust to duplicates AFAICT', file=sys.stderr)
-        sys.exit(1)
-    else:
         m.update_ynab()
     
     if False:
