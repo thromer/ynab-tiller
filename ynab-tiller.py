@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # TODO error handling
 
 import csv
