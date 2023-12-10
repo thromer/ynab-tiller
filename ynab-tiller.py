@@ -78,6 +78,19 @@ def date_from_excel_date(sheet_date):
 def date_to_excel_date(python_date):
     return datetime.date.fromordinal(python_date.toordinal() - EXCEL_EPOCH).toordinal()
 
+def filter_transaction(row):
+    full_desc = row['Full Description']
+    if full_desc == 'DIVIDEND RECEIVED FIDELITY GOVERNMENT MONEY MARKET':
+        # interest on brokerage money market
+        return True
+    if re.match(r'^(?:PURCHASE INTO|REDEMPTION FROM) CORE ACCOUNT FIDELITY GOVERNMENT MONEY MARKET$', full_desc):
+        return False
+    if re.match(r'^REINVESTMENT (?:VANGUARD BD INDEX FDS TOTAL BND MRKT|FIDELITY GOVERNMENT MONEY MARKET)$', full_desc):
+        return False
+    if full_desc == 'DIVIDEND RECEIVED VANGUARD BD INDEX FDS TOTAL BND MRKT':
+        return False
+    return True
+    
 def make_transaction(ynab_account_id, row):
     if not ynab_account_id:
         raise "Must provide tiller_id"
@@ -150,6 +163,8 @@ class Main:
         ynab_transactions = []
         for entry in brokerage_entry_list:
             if entry['tiller_transaction_id'] not in new_tiller_ids:
+                continue
+            if filter_transaction(entry):
                 continue
             ynab_transaction = make_transaction(YNAB_BROKERAGE_ACCOUNT_ID, entry)
             print(ynab_transaction)
