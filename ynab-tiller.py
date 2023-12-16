@@ -81,16 +81,22 @@ def date_to_excel_date(python_date):
 
 def filter_transaction(row):
     full_desc = row['Full Description']
+    id = row['tiller_transaction_id']  # for debugging
     if full_desc == 'DIVIDEND RECEIVED FIDELITY GOVERNMENT MONEY MARKET':
         # interest on brokerage money market
-        return True
+        # print(f'allowing1 {id} "{full_desc}"')
+        return False
     if re.match(r'^(?:PURCHASE INTO|REDEMPTION FROM) CORE ACCOUNT FIDELITY GOVERNMENT MONEY MARKET$', full_desc):
-        return False
+        # print(f'filtering1 {id} "{full_desc}"')
+        return True
     if re.match(r'^REINVESTMENT (?:VANGUARD BD INDEX FDS TOTAL BND MRKT|FIDELITY GOVERNMENT MONEY MARKET)$', full_desc):
-        return False
+        # print(f'filtering2 {id} "{full_desc}"')
+        return True
     if full_desc == 'DIVIDEND RECEIVED VANGUARD BD INDEX FDS TOTAL BND MRKT':
-        return False
-    return True
+        # print(f'filtering3 {id} "{full_desc}"')
+        return True
+    # print(f'allowing2 {id} "{full_desc}"')
+    return False
     
 def make_transaction(ynab_account_id, row):
     if not ynab_account_id:
@@ -162,10 +168,16 @@ class Main:
         print('new_tiller_ids', new_tiller_ids)
 
         ynab_transactions = []
+        # This is a bit confusing. It is looking at what is known to tiller,
+        # and filtering by new_tiller_ids, which is what is not known to YNAB.
         for entry in brokerage_entry_list:
+            # print(entry['tiller_transaction_id'])
             if entry['tiller_transaction_id'] not in new_tiller_ids:
+                # print(f"skipping existing id {entry['tiller_transaction_id']}")
+                # print(f"skip1 {entry['tiller_transaction_id']}")
                 continue
             if filter_transaction(entry):
+                # print(f"skip2 {entry['tiller_transaction_id']}")
                 continue
             ynab_transaction = make_transaction(YNAB_BROKERAGE_ACCOUNT_ID, entry)
             print(ynab_transaction)
@@ -173,6 +185,7 @@ class Main:
 
         # Yuck! Assumes nothing interesting will happen after this point
         if not ynab_transactions:
+            # print('ynab_transactions empty, nothing to do')
             return
         
         api_response = self._ynab.create_transaction(
