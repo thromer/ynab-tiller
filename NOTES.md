@@ -1,3 +1,11 @@
+New machine
+
+* git clone 
+* venv venv
+* . venv/bin/activate
+* pip install -r pip-packages
+
+
 Assumptions
 
 - We'll assume we never have two instances running concurrently.
@@ -11,7 +19,7 @@ sudo apt-get install python3-venv
 venv venv
 . venv/bin/activate
 
-Later: https://github.com/dmlerner/ynab-python
+Later: https://github.com/dmlerner/ynab-python  (ynab-api ?)
 
 https://developers.google.com/sheets/api/quickstart/python
 
