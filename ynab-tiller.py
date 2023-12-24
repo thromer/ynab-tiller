@@ -82,19 +82,30 @@ def date_to_excel_date(python_date):
 def filter_transaction(row):
     full_desc = row['Full Description']
     id = row['tiller_transaction_id']  # for debugging
+    
     if full_desc == 'DIVIDEND RECEIVED FIDELITY GOVERNMENT MONEY MARKET':
         # interest on brokerage money market
         # print(f'allowing1 {id} "{full_desc}"')
         return False
+
     if re.match(r'^(?:PURCHASE INTO|REDEMPTION FROM) CORE ACCOUNT FIDELITY GOVERNMENT MONEY MARKET$', full_desc):
         # print(f'filtering1 {id} "{full_desc}"')
         return True
-    if re.match(r'^REINVESTMENT (?:VANGUARD BD INDEX FDS TOTAL BND MRKT|FIDELITY GOVERNMENT MONEY MARKET)$', full_desc):
-        # print(f'filtering2 {id} "{full_desc}"')
+
+    # Too much work to list all the things to exclude, instead just rely on
+    # rarity of the default fund changing from Fidelity Government Money Market.
+    # if re.match(r'^REINVESTMENT (?:VANGUARD BD INDEX FDS TOTAL BND MRKT|FIDELITY GOVERNMENT MONEY MARKET)$', full_desc):
+    #    # print(f'filtering2 {id} "{full_desc}"')
+    #    return True
+    # '^DIVIDEND RECEIVED .*(?:VANGUARD INTL EQUITY INDEX FDS|VANGUARD TOTAL STOCK MARKET INDEX|VANGUARD TOTAL INTERNATIONAL STOCK|VANGUARD BD INDEX FDS TOTAL BND' # Use that regex instead of the below
+    # if full_desc == 'DIVIDEND RECEIVED VANGUARD BD INDEX FDS TOTAL BND MRKT':
+    #    # print(f'filtering3 {id} "{full_desc}"')
+    #    return True
+
+    if re.match(r'^(?:DIVIDEND RECEIVED|REINVESTMENT) ', full_desc):
+    #    # print(f'filtering2 {id} "{full_desc}"')
         return True
-    if full_desc == 'DIVIDEND RECEIVED VANGUARD BD INDEX FDS TOTAL BND MRKT':
-        # print(f'filtering3 {id} "{full_desc}"')
-        return True
+    
     # print(f'allowing2 {id} "{full_desc}"')
     return False
     
