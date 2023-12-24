@@ -270,7 +270,7 @@ class Main:
 def none_blank(s):
     return "" if s == None else s
 
-def ynab_tiller(event, context):
+def ynab_tiller(*unused):
     m = Main()
 
     if False:
@@ -319,7 +319,7 @@ def ynab_tiller(event, context):
         pprint(m.get_ynab_transactions())
 
 if __name__ == '__main__':
-    ynab_tiller(None, None)
+    ynab_tiller()
 
 # Local Variables:
 # compile-command: "python ynab-tiller.py"
