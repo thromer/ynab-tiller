@@ -4,6 +4,7 @@ New machine
 * venv venv
 * . venv/bin/activate
 * pip install -r pip-packages
+* gcloud auth login
 
 
 Assumptions

@@ -4,9 +4,10 @@
 
 import csv
 import datetime
+import google.auth
 import json
 import operator
-import os.path
+# import os.path
 import re
 import sys
 import ynab_api
@@ -14,6 +15,7 @@ import ynab_api
 from collections import defaultdict
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.cloud import secretmanager
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -30,19 +32,20 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1UQQgW3kBfxNBB50q1pg4Hn2c6DvwoKVUF_9GelZ1k1Q'
 RANGE_NAME = 'Brokerage_recent!A:G'
 
-HOME_DIR = os.environ['HOME']
-TOKEN_FILE = HOME_DIR + '/ynab-tiller-token.json'
-CREDENTIALS_FILE = HOME_DIR + '/client_secret_503586827022-4det1688u753c66bgkplrn1eseno78bq.apps.googleusercontent.com.json'
-YNAB_SECRETS_FILE = HOME_DIR + '/ynab-secrets.json'
+# HOME_DIR = os.environ['HOME']
+# TOKEN_FILE = HOME_DIR + '/ynab-tiller-token.json'
+# CREDENTIALS_FILE = HOME_DIR + '/client_secret_503586827022-4det1688u753c66bgkplrn1eseno78bq.apps.googleusercontent.com.json'
+YNAB_API_SECRET_NAME = 'projects/ynab-sheets-001/secrets/ynab-api/versions/latest'
 YNAB_BUDGET_ID = 'de4c0d69-c96c-4f1d-833b-cb0b7151b364'
 YNAB_BROKERAGE_ACCOUNT_ID = '93132634-e507-4c48-909d-981aef2cc70e'
 YNAB_CHASE_AMAZON_ACCOUNT_ID = '46be1192-177d-480b-aa29-283fdd327c8a'
 
 def get_ynab_transactions_api():
-    with open(YNAB_SECRETS_FILE) as f:
-        secrets = json.load(f)
-        api_key = secrets['api_key']
-    
+    secret_manager_client = secretmanager.SecretManagerServiceClient()
+    secret = secret_manager_client.access_secret_version(
+        request={'name': YNAB_API_SECRET_NAME}).payload.data.decode()
+    api_key = json.loads(secret)['api_key']
+
     configuration = ynab_api.Configuration(
         host="https://api.youneedabudget.com/v1")
     configuration.api_key['bearer'] = api_key
@@ -50,25 +53,8 @@ def get_ynab_transactions_api():
     return transactions_api.TransactionsApi(ynab_api.ApiClient(configuration))
 
 def get_spreadsheets_api():
-    sheets_creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists(TOKEN_FILE):
-        sheets_creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
-    if not sheets_creds or not sheets_creds.valid:
-        if sheets_creds and sheets_creds.expired and sheets_creds.refresh_token:
-            sheets_creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES)
-            sheets_creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(sheets_creds.to_json())
-
-    service = build('sheets', 'v4', credentials=sheets_creds)
+    creds, _ = google.auth.default(scopes=SCOPES)
+    service = build('sheets', 'v4', credentials=creds)
     return service.spreadsheets()
 
 EXCEL_EPOCH = datetime.date(1900, 1, 1).toordinal() - 2
@@ -284,7 +270,7 @@ class Main:
 def none_blank(s):
     return "" if s == None else s
 
-def main():
+def ynab_tiller(event, context):
     m = Main()
 
     if False:
@@ -333,7 +319,7 @@ def main():
         pprint(m.get_ynab_transactions())
 
 if __name__ == '__main__':
-    main()
+    ynab_tiller(None, None)
 
 # Local Variables:
 # compile-command: "python ynab-tiller.py"
