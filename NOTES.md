@@ -3,7 +3,7 @@ New machine
 * git clone 
 * venv venv
 * . venv/bin/activate
-* pip install -r pip-packages
+* pip install -r requirements.txt
 * gcloud auth login
 
 
