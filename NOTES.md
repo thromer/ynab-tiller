@@ -4,8 +4,8 @@ New machine
 * venv venv
 * . venv/bin/activate
 * pip install -r requirements.txt
-* gcloud auth login
-
+* gcloud auth login tromer@gmail.com --enable-gdrive-access --update-adc --billing-project seventh-torch-825
+* gcloud config set project ynab-sheets-001
 
 Assumptions
 

@@ -7,7 +7,6 @@ import datetime
 import google.auth
 import json
 import operator
-# import os.path
 import re
 import sys
 import ynab_api
@@ -25,16 +24,16 @@ from ynab_api.api import transactions_api
 from ynab_api.model.post_transactions_wrapper import PostTransactionsWrapper
 from ynab_api.model.save_transaction import SaveTransaction
 
-# If modifying these scopes, delete the file $HOME/ynab-tiller-token.json.
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+# If modifying these scopes, re-run the 'gcloud auth login' step from NOTES.md.
+# If you still get errors delete the ~/.config/gcloud directory and re-run both
+# gcloud commands in NOTES.md
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
+          'https://www.googleapis.com/auth/cloud-platform']
 
 # The ID and range of a sample spreadsheet.
 SPREADSHEET_ID = '1UQQgW3kBfxNBB50q1pg4Hn2c6DvwoKVUF_9GelZ1k1Q'
 RANGE_NAME = 'Brokerage_recent!A:G'
 
-# HOME_DIR = os.environ['HOME']
-# TOKEN_FILE = HOME_DIR + '/ynab-tiller-token.json'
-# CREDENTIALS_FILE = HOME_DIR + '/client_secret_503586827022-4det1688u753c66bgkplrn1eseno78bq.apps.googleusercontent.com.json'
 YNAB_API_SECRET_NAME = 'projects/ynab-sheets-001/secrets/ynab-api/versions/latest'
 YNAB_BUDGET_ID = 'de4c0d69-c96c-4f1d-833b-cb0b7151b364'
 YNAB_BROKERAGE_ACCOUNT_ID = '93132634-e507-4c48-909d-981aef2cc70e'
