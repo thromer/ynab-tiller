@@ -37,3 +37,10 @@ pip install git+https://github.com/thromer/ynab-api.git@thromer-nullable
 
 pip install datetime
 
+Re-creating cloud schedule if needed
+
+gcloud scheduler jobs create pubsub daily --location=us-west1 --schedule='17 5 * * *' --topic=projects/ynab-sheets-001/topics/topic-001 --message-body=' ' --time-zone='America/Los_Angeles'
+
+Deployment
+
+cd src/ynab-tiller && gcloud --project ynab-sheets-001 functions deploy ynab-tiller --region=us-west1 --trigger-topic=topic-001 --runtime=python39
