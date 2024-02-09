@@ -321,5 +321,5 @@ if __name__ == '__main__':
     ynab_tiller()
 
 # Local Variables:
-# compile-command: "python ynab-tiller.py"
+# compile-command: "python main.py"
 # End:    
