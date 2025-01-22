@@ -3,7 +3,6 @@
 import base64
 import google.auth
 import json
-# import os
 
 from google.cloud import secretmanager
 from googleapiclient.discovery import build
@@ -13,16 +12,7 @@ RANGE= 'Sheet1!A1:B4'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 YNAB_API_SECRET = 'projects/ynab-sheets-001/secrets/ynab-api/versions/latest'
 
-def hello_pubsub(event, context):
-    """Triggered from a message on a Cloud Pub/Sub topic.
-    Args:
-         event (dict): Event payload.
-         context (google.cloud.functions.Context): Metadata for the event.
-    """
-    pubsub_message = base64.b64decode(event['data']).decode('utf-8')
-    print(f'message: {pubsub_message}')
-    # print(f'SHEET_ID: {os.environ.get("SHEET_ID")}')
-    # what does next line do outside of cloud environment?
+def hello_pubsub(*unused):
     creds, _ = google.auth.default(scopes=SCOPES)
 
     service = build('sheets', 'v4', credentials=creds)
@@ -37,10 +27,10 @@ def hello_pubsub(event, context):
     secret = secret_manager_client.access_secret_version(
         request={'name': YNAB_API_SECRET}).payload.data.decode()
     api_key = json.loads(secret)['api_key']
+    print('got secret')
 
 if __name__ == '__main__':
-    hello_pubsub({'data': base64.b64encode(b'Hello command line')}, None)
-
+    hello_pubsub(None, None)
 
 # Local Variables:
 # compile-command: "python hello_cloud_function.py"
